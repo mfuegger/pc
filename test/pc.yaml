@@ -1,0 +1,8 @@
+# Test configuration for panel compiler
+sinus:
+  file: sinus.svg
+  fit: contain
+
+cosinus:
+  file: cos.svg
+  fit: contain

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Panel compiler: substitutes SVG figures into a panel template."""
 
+import argparse
+import copy
 import logging
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -127,7 +128,8 @@ def calculate_scale(
 def load_svg_content(svg_path: Path) -> list[ET.Element]:
     """Load SVG content as list of elements."""
     tree = ET.parse(svg_path)
-    return list(tree.getroot())
+    # Return deep copies to avoid element reuse when multiple groups use the same SVG
+    return [copy.deepcopy(element) for element in tree.getroot()]
 
 
 def compile_panel(
@@ -205,18 +207,10 @@ def compile_panel(
         content = load_svg_content(svg_path)
 
         # Clear group and add scaled content
-        # Preserve id and dimension attributes
-        group_id = group.get("id") or ""
-        group_width = group.get("width")
-        group_height = group.get("height")
-
+        # Preserve all original attributes
+        original_attribs = dict(group.attrib)
         group.clear()
-        if group_id:
-            group.set("id", group_id)
-        if group_width:
-            group.set("width", group_width)
-        if group_height:
-            group.set("height", group_height)
+        group.attrib.update(original_attribs)
 
         for element in content:
             # Apply scale transform
@@ -242,25 +236,35 @@ def main() -> None:
         format="%(levelname)s: %(message)s",
     )
 
-    if len(sys.argv) < 3:
-        logger.error("Usage: python pc.py <panel.svg> <config.yaml> [output.svg]")
-        sys.exit(1)
-
-    panel_path = Path(sys.argv[1])
-    config_path = Path(sys.argv[2])
-    output_path = (
-        Path(sys.argv[3])
-        if len(sys.argv) > 3
-        else panel_path.parent / "panel_compiled.svg"
+    parser = argparse.ArgumentParser(
+        description="Compile SVG figures into a panel template"
     )
+    parser.add_argument("panel", help="Input panel SVG file")
+    parser.add_argument(
+        "config",
+        nargs="?",
+        default="pc.yaml",
+        help="Configuration YAML file (defaults to pc.yaml in current directory)",
+    )
+    parser.add_argument(
+        "output",
+        nargs="?",
+        help="Output SVG file (defaults to overwriting input panel)",
+    )
+
+    args = parser.parse_args()
+
+    panel_path = Path(args.panel)
+    config_path = Path(args.config)
+    output_path = Path(args.output) if args.output else panel_path
 
     if not panel_path.exists():
         logger.error(f"Panel file not found: {panel_path}")
-        sys.exit(1)
+        return
 
     if not config_path.exists():
         logger.error(f"Config file not found: {config_path}")
-        sys.exit(1)
+        return
 
     compile_panel(panel_path, config_path, output_path)
 
