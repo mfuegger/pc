@@ -4,12 +4,33 @@
 import argparse
 import copy
 import logging
+import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+class ColorFormatter(logging.Formatter):
+    """Formatter that adds ANSI color codes to log messages."""
+
+    COLORS = {
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "",  # Default color
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[41m",  # Red background
+    }
+    RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        levelname = record.levelname
+        color = self.COLORS.get(levelname, self.RESET)
+        record.levelname = f"{color}{levelname}{self.RESET}"
+        return super().format(record)
 
 
 class SVGDimensions:
@@ -132,6 +153,103 @@ def load_svg_content(svg_path: Path) -> list[ET.Element]:
     return [copy.deepcopy(element) for element in tree.getroot()]
 
 
+def render_latex_to_svg(latex_text: str, fontsize: str = "10pt") -> list[ET.Element]:
+    """Render LaTeX text to SVG using pdflatex and pdf2svg."""
+    try:
+        # Parse font size (e.g., "10pt" -> 10)
+        try:
+            if fontsize.endswith("pt"):
+                fontsize_val = fontsize[:-2]
+            else:
+                fontsize_val = fontsize
+        except ValueError:
+            logger.error(
+                f"Invalid font size format '{fontsize}'. Use format like '10pt' or '10'"
+            )
+            return []
+
+        # Create temporary directory for LaTeX compilation
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Create LaTeX document with standard size
+            # We'll scale it in SVG afterwards
+            latex_doc = f"""\\documentclass{{article}}
+\\usepackage{{amsmath}}
+\\usepackage{{amssymb}}
+\\usepackage{{geometry}}
+\\geometry{{margin=5pt,paperwidth=500pt,paperheight=100pt}}
+\\pagestyle{{empty}}
+\\begin{{document}}
+\\noindent
+{latex_text}
+\\end{{document}}
+"""
+
+            tex_file = tmpdir_path / "doc.tex"
+            tex_file.write_text(latex_doc)
+
+            # Compile with pdflatex
+            result = subprocess.run(
+                [
+                    "pdflatex",
+                    "-interaction=nonstopmode",
+                    "-output-directory",
+                    str(tmpdir_path),
+                    str(tex_file),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                logger.error(
+                    f"pdflatex failed for LaTeX: {latex_text}\n{result.stderr}"
+                )
+                return []
+
+            # Convert PDF to SVG with Inkscape
+            pdf_file = tmpdir_path / "doc.pdf"
+            svg_file = tmpdir_path / "doc.svg"
+
+            result = subprocess.run(
+                [
+                    "inkscape",
+                    "--pdf-poppler",
+                    str(pdf_file),
+                    "--export-type=svg",
+                    "--export-filename",
+                    str(svg_file),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                logger.error(
+                    f"Inkscape conversion failed for LaTeX: {latex_text}\n{result.stderr}"
+                )
+                return []
+
+            # Parse the generated SVG
+            tree = ET.parse(svg_file)
+            root = tree.getroot()
+
+            # Extract all child elements from the root
+            content = [copy.deepcopy(elem) for elem in root]
+
+            logger.debug(f"Successfully rendered LaTeX: {latex_text}")
+            return content
+
+    except Exception as e:
+        logger.error(
+            f"Failed to render LaTeX text: {latex_text}\n"
+            f"Error type: {type(e).__name__}\n"
+            f"Error message: {e}"
+        )
+        return []
+
+
 def compile_panel(
     panel_path: Path,
     config_path: Path,
@@ -163,48 +281,69 @@ def compile_panel(
             continue
 
         # Parse figure config
+        tex_text = None
+        fontsize = "10pt"
         if isinstance(figure_config, dict):
             svg_file = figure_config.get("file") or figure_config.get("svg")
             fit = figure_config.get("fit", "contain")
             config_width = figure_config.get("width")
             config_height = figure_config.get("height")
+            tex_text = figure_config.get("tex")
+            fontsize = figure_config.get("size", "10pt")
         else:
             svg_file = figure_config
             fit = "contain"
             config_width = None
             config_height = None
 
-        if not svg_file:
-            logger.warning(f"No SVG file specified for {figure_id}")
-            continue
+        # Extract numeric fontsize value
+        try:
+            if fontsize.endswith("pt"):
+                fontsize_num = float(fontsize[:-2])
+            else:
+                fontsize_num = float(fontsize)
+        except (ValueError, AttributeError):
+            fontsize_num = 10.0
 
-        svg_path = panel_path.parent / svg_file
-        if not svg_path.exists():
-            logger.warning(f"SVG file not found: {svg_path}")
-            continue
+        # Use LaTeX if specified, otherwise require SVG file
+        if tex_text:
+            content = render_latex_to_svg(tex_text, fontsize)
+            if not content:
+                logger.warning(f"Failed to render LaTeX for {figure_id}")
+                continue
+            # Scale LaTeX based on fontsize (12pt is base)
+            scale = fontsize_num / 12.0
+        elif svg_file:
+            svg_path = panel_path.parent / svg_file
+            if not svg_path.exists():
+                logger.warning(f"SVG file not found: {svg_path}")
+                continue
 
-        # Get dimensions from group or config
-        config_dims = None
-        if config_width and config_height:
-            config_dims = SVGDimensions(
-                width=float(config_width), height=float(config_height)
-            )
+            # Get dimensions from group or config
+            config_dims = None
+            if config_width and config_height:
+                config_dims = SVGDimensions(
+                    width=float(config_width), height=float(config_height)
+                )
 
-        source_dims = SVGDimensions.from_svg(svg_path)
-        target_dims = get_group_dimensions(group, config_dims)
+            source_dims = SVGDimensions.from_svg(svg_path)
+            target_dims = get_group_dimensions(group, config_dims)
 
-        # If no target dimensions, embed without scaling
-        if target_dims is None:
-            logger.warning(
-                f"Group {figure_id} has no width/height attributes and none specified in config. "
-                "Embedding without scaling."
-            )
-            scale = 1.0
+            # If no target dimensions, embed without scaling
+            if target_dims is None:
+                logger.warning(
+                    f"Group {figure_id} has no width/height attributes and none specified in config. "
+                    "Embedding without scaling."
+                )
+                scale = 1.0
+            else:
+                scale = calculate_scale(source_dims, target_dims, fit)
+
+            # Load source SVG content
+            content = load_svg_content(svg_path)
         else:
-            scale = calculate_scale(source_dims, target_dims, fit)
-
-        # Load source SVG content
-        content = load_svg_content(svg_path)
+            logger.warning(f"No SVG file or LaTeX text specified for {figure_id}")
+            continue
 
         # Clear group and add scaled content
         # Preserve all original attributes
@@ -231,10 +370,10 @@ def compile_panel(
 
 def main() -> None:
     """CLI entry point."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s",
-    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(ColorFormatter("%(levelname)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser(
         description="Compile SVG figures into a panel template"
