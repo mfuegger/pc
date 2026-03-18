@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "panel-compiler"
+version = "0.1.0"
+description = "Compose SVG figures and LaTeX equations into a panel template"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["pyyaml"]
+
+[project.scripts]
+pc = "pc:main"
+
+[tool.ruff]
+target-version = "py312"
