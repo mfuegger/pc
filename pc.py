@@ -478,19 +478,23 @@ def compile_panel(config_path: Path, fallback_output: Path) -> None:
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
+    def _resolve_outputs(raw: str | list[str] | None, fallback: Path) -> list[Path]:
+        if not raw:
+            return [fallback]
+        items = raw if isinstance(raw, list) else [raw]
+        return [config_path.parent / o for o in items]
+
     if isinstance(config, list):
         for item in config:
-            item_output = item.get("output")
-            if not item_output:
+            raw = item.get("output")
+            if not raw:
                 logger.error("Each panel block must have an 'output' key")
                 continue
-            _compile_one(item, config_path, config_path.parent / item_output)
+            for output_path in _resolve_outputs(raw, fallback_output):
+                _compile_one(item, config_path, output_path)
     else:
-        yaml_output = config.get("output")
-        output_path = (
-            config_path.parent / yaml_output if yaml_output else fallback_output
-        )
-        _compile_one(config, config_path, output_path)
+        for output_path in _resolve_outputs(config.get("output"), fallback_output):
+            _compile_one(config, config_path, output_path)
 
 
 def main() -> None:

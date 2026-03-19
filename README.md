@@ -10,10 +10,9 @@ You define a panel template in Inkscape with named group placeholders (set via t
 panel.svg  +  pc.yaml  →  out.svg
 ```
 
-`panel.svg` — drawn in Inkscape, contains two empty groups `plot` and `label`:
+`panel.svg` — drawn in Inkscape, contains two empty groups `plot` and `label`.
 
-```
-pc.yaml`:
+`pc.yaml`:
 ```yaml
 panel: panel.svg
 
@@ -51,7 +50,7 @@ pc [config.yaml] [-o output.svg|pdf]
 
 ## Config format
 
-Single panel:
+Single panel — `output` accepts a string or a list to produce multiple formats at once:
 
 ```yaml
 panel: path/to/panel.svg   # required — relative to this config file
@@ -70,6 +69,14 @@ equation_id:
 
 # Shorthand — SVG file only
 other_id: path/to/fig.svg
+
+# Single output (string)
+output: out.svg
+
+# Multiple outputs — produces both files from one run
+output:
+  - out.svg
+  - out.pdf
 ```
 
 Multiple panels in one config (list form) — `-o` is ignored, each block needs `output`:
