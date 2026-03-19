@@ -32,7 +32,9 @@ pc pc.yaml -o out.svg
 ## Installation
 
 ```bash
-pip install panel-compiler
+pip install git+https://github.com/mfuegger/pc.git
+# or with uv
+uv tool install git+https://github.com/mfuegger/pc.git
 ```
 
 For LaTeX rendering, `pdflatex` must be on your `PATH`. For PDF figures and PDF output, `pdf2svg` and `inkscape` must be on your `PATH`. On macOS: `brew install pdf2svg`.

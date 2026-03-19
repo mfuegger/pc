@@ -334,11 +334,11 @@ def _compile_one(panel_config: dict, config_path: Path, output_path: Path) -> No
     for figure_id, figure_config in panel_config.items():
         if figure_id in RESERVED_KEYS:
             continue
-        group = (
-            root.find(f".//*[@{INKSCAPE_LABEL}='{figure_id}']")
-            or root.find(f".//*[@label='{figure_id}']")
-            or root.find(f".//*[@id='{figure_id}']")
-        )
+        group = root.find(f".//*[@{INKSCAPE_LABEL}='{figure_id}']")
+        if group is None:
+            group = root.find(f".//*[@label='{figure_id}']")
+        if group is None:
+            group = root.find(f".//*[@id='{figure_id}']")
         if group is None:
             logger.warning(f"Group {figure_id} not found in panel")
             continue
