@@ -72,7 +72,7 @@ output:
   - out.pdf
 ```
 
-Each remaining key is a **group label** that must match a group in the panel SVG. `pc` looks up the group by `inkscape:label` first, then `label`, then `id`.
+Each remaining key is a **label** that must match an element in the panel SVG. `pc` looks it up by `inkscape:label` first, then `label`, then `id`. The element can be a `<g>` group or a `<rect>` placeholder — a `<rect>` is automatically replaced by a `<g>` positioned at the rect's `x`/`y`.
 
 ### Figure entry (SVG or PDF)
 
