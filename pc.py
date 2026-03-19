@@ -4,6 +4,7 @@
 import argparse
 import copy
 import logging
+import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -217,7 +218,7 @@ def pdf_to_svg(pdf_path: Path) -> Path | None:
 
 
 def render_latex_to_svg(latex_text: str) -> list[ET.Element]:
-    """Render LaTeX text to SVG using pdflatex and pdf2svg."""
+    """Render LaTeX text to SVG using pdflatex and inkscape."""
     try:
         # Create temporary directory for LaTeX compilation
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -515,6 +516,10 @@ def main() -> None:
         help=f"Configuration YAML file (defaults to {default_config})",
     )
     args = parser.parse_args()
+
+    for tool in ("inkscape", "pdf2svg"):
+        if shutil.which(tool) is None:
+            logger.warning(f"{tool} not found on PATH — PDF and LaTeX features will fail")
 
     config_path = Path(args.config)
     output_path = config_path.with_suffix(".svg")

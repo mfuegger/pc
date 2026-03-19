@@ -26,7 +26,7 @@ label:
 ```
 
 ```bash
-pc pc.yaml -o out.svg
+pc pc.yaml
 ```
 
 ## Installation
@@ -46,13 +46,14 @@ For LaTeX rendering, `pdflatex` must be on your `PATH`. For PDF figures and PDF 
 ## Usage
 
 ```
-pc [config.yaml] [-o output.svg|pdf]
+pc [config.yaml]
 ```
 
 | Argument | Default | Description |
 |---|---|---|
 | `config.yaml` | `pc.yaml` | YAML config (see below) |
-| `-o output` | `out.svg` | Output file — `.svg` or `.pdf` |
+
+The output path is taken from the `output` key in the config. If omitted, it defaults to the config filename with `.svg` extension (e.g. `pc.yaml` → `pc.svg`).
 
 ## Config format
 
@@ -60,7 +61,7 @@ pc [config.yaml] [-o output.svg|pdf]
 
 ```yaml
 panel: panel.svg    # required — path to the panel SVG, relative to this config file
-output: out.svg     # optional — overridden by -o; omit to use -o or default out.svg
+output: out.svg     # optional — defaults to <config-stem>.svg if omitted
 ```
 
 `output` can also be a list to produce multiple formats in one run:
@@ -77,7 +78,7 @@ Each remaining key is a **group label** that must match a group in the panel SVG
 
 ```yaml
 plot:
-  file: results.svg   # path relative to this config file; .svg or .pdf
+  file: results.svg   # path relative to this config file; .svg or .pdf  (alias: svg:)
   fit: contain        # contain | height | width  (default: contain)
   width: 200          # optional — override the target width  (SVG user units)
   height: 100         # optional — override the target height (SVG user units)
@@ -88,7 +89,7 @@ Fit strategies:
 - `height` — scale to match the placeholder height exactly
 - `width`  — scale to match the placeholder width exactly
 
-Target dimensions come from `width`/`height` attributes on the group element in the panel SVG. `width`/`height` in the config override these.
+Target dimensions come from `width`/`height` attributes on the group element in the panel SVG. The config `width`/`height` are used as a fallback when the group has no such attributes.
 
 PDF files are converted via `pdf2svg` before embedding.
 
@@ -112,7 +113,7 @@ other: path/to/fig.svg
 
 ### Multiple panels
 
-Use a YAML list. The `-o` flag is ignored; each entry must have its own `output`:
+Use a YAML list; each entry must have its own `output`:
 
 ```yaml
 - panel: panel1.svg
