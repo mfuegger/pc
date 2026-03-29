@@ -11,10 +11,7 @@ def test_prefixes_id() -> None:
 
 def test_updates_href() -> None:
     elem = ET.fromstring(
-        '<g xmlns="http://www.w3.org/2000/svg">'
-        '<use href="#foo"/>'
-        '<g id="foo"/>'
-        "</g>"
+        '<g xmlns="http://www.w3.org/2000/svg"><use href="#foo"/><g id="foo"/></g>'
     )
     _rewrite_ids([elem], "pfx")
     use = elem.find("{http://www.w3.org/2000/svg}use")

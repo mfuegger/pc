@@ -349,7 +349,9 @@ def _compile_one(panel_config: dict, config_path: Path, output_path: Path) -> No
         _write_output(tree, output_path)
 
 
-def _compile_tree(panel_config: dict, config_path: Path) -> "ET.ElementTree[ET.Element] | None":
+def _compile_tree(
+    panel_config: dict, config_path: Path
+) -> "ET.ElementTree[ET.Element] | None":
     """Parse the template SVG, embed all figures, and return the compiled tree."""
     panel_str = panel_config.get("panel")
     if not panel_str:
@@ -551,7 +553,9 @@ def main() -> None:
 
     for tool in ("inkscape", "pdf2svg"):
         if shutil.which(tool) is None:
-            logger.warning(f"{tool} not found on PATH — PDF and LaTeX features will fail")
+            logger.warning(
+                f"{tool} not found on PATH — PDF and LaTeX features will fail"
+            )
 
     config_path = Path(args.config)
     output_path = config_path.with_suffix(".svg")

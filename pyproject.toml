@@ -1,30 +1,31 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
 name = "panel-compiler"
-dynamic = ["version"]
+version = "0.1.2"
 description = "Compose SVG figures and LaTeX equations into a panel template"
 readme = "README.md"
-authors = [
-    {name = "Matthias Függer", email = "mfuegger@gmail.com"},
-]
-license = "Apache-2.0"
+authors = [{ name = "Matthias Függer", email = "mfuegger@gmail.com" }]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 dependencies = ["pyyaml"]
 
 [project.scripts]
 pc = "pc:main"
 
-[tool.hatch.version]
-source = "vcs"
-
 [tool.hatch.build.targets.wheel]
 include = ["pc.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+exclude = ["example", ".venv"]
 
 [tool.ruff]
 target-version = "py312"
