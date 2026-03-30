@@ -11,3 +11,4 @@ release:
 	git commit -m "release $(v)"
 	git tag v$(v)
 	git push origin main v$(v)
+	gh release create v$(v) --title "v$(v)" --generate-notes

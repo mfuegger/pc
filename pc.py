@@ -81,10 +81,15 @@ def get_group_dimensions(
     config_dims: SVGDimensions | None = None,
 ) -> SVGDimensions | None:
     """Extract dimensions from group attributes, config, or bounding box."""
-    # Try group attributes first
+    # Previously compiled placeholder: dimensions stored as data-pc-* attributes.
+    pc_w = group.get("data-pc-width")
+    pc_h = group.get("data-pc-height")
+    if pc_w and pc_h:
+        return SVGDimensions(width=float(pc_w), height=float(pc_h))
+
+    # Try standard width/height attributes (e.g., on a <rect>).
     width = group.get("width")
     height = group.get("height")
-
     if width and height:
         return SVGDimensions(width=float(width), height=float(height))
 
@@ -475,6 +480,13 @@ def _compile_tree(
             x = original_attribs.get("x", "0")
             y = original_attribs.get("y", "0")
             container.set("transform", f"translate({x},{y})")
+            # Store original rect dimensions so re-compilation (self-overwriting
+            # panels) can recover the correct target size without falling back to
+            # the bounding-box heuristic, which reads content coordinates.
+            if w := original_attribs.get("width"):
+                container.set("data-pc-width", w)
+            if h := original_attribs.get("height"):
+                container.set("data-pc-height", h)
             parent = parent_map[group]
             idx = list(parent).index(group)
             parent.remove(group)
@@ -484,17 +496,19 @@ def _compile_tree(
             group.clear()
             group.attrib.update(original_attribs)
 
-        for element in content:
-            # Apply scale transform
-            existing_transform = element.get("transform", "")
-            scale_transform = f"scale({scale})" if scale != 1.0 else ""
-
-            if existing_transform and scale_transform:
-                element.set("transform", f"{scale_transform} {existing_transform}")
-            elif scale_transform:
-                element.set("transform", scale_transform)
-
-            group.append(element)
+        if scale != 1.0:
+            # Wrap all content in a single <g scale(s)> so that clip-path definitions
+            # (which live in <defs>) and their referencing elements are scaled together,
+            # preserving the source coordinate system internally.
+            ns = group.tag.split("}")[0] + "}" if "}" in group.tag else ""
+            wrapper = ET.Element(f"{ns}g")
+            wrapper.set("transform", f"scale({scale})")
+            for element in content:
+                wrapper.append(element)
+            group.append(wrapper)
+        else:
+            for element in content:
+                group.append(element)
 
     return tree
 

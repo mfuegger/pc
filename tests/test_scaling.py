@@ -235,6 +235,27 @@ def test_template_not_overwritten_when_output_differs(tmp_path: Path) -> None:
     assert (tmp_path / "panel_tpl.svg").read_text() == original
 
 
+def test_recompile_self_overwriting_stable_scale(tmp_path: Path) -> None:
+    """Self-overwriting panel: second compilation must apply the same scale as the first.
+
+    Root cause guarded against: after the first run the rect placeholder is gone,
+    replaced by a <g>.  Without stored target dimensions the bounding-box fallback
+    reads raw content coordinates (pt-scale numbers), producing a wildly wrong scale.
+    """
+    _figure_svg(tmp_path / "fig.svg", 595, 420, "595pt", "420pt")
+    _panel_mm(tmp_path / "panel.svg", 1, 2, 84, 64)
+    config = tmp_path / "pc.yaml"
+    config.write_text("panel: panel.svg\noutput: panel.svg\nfig: fig.svg\n")
+
+    compile_panel(config, tmp_path / "fallback.svg")
+    scale_first = _extract_scale(ET.parse(tmp_path / "panel.svg"))
+
+    compile_panel(config, tmp_path / "fallback.svg")
+    scale_second = _extract_scale(ET.parse(tmp_path / "panel.svg"))
+
+    assert scale_second == pytest.approx(scale_first, rel=1e-6)
+
+
 def test_panel_is_template_and_output_does_not_corrupt(tmp_path: Path) -> None:
     """When panel == output, the second call must use the original template tree."""
     _figure_svg(tmp_path / "fig.svg", 100, 100, "100", "100")
