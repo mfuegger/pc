@@ -319,7 +319,9 @@ def render_latex_to_svg(latex_text: str) -> list[ET.Element]:
         return []
 
 
-RESERVED_KEYS = {"panel", "output"}
+RESERVED_KEYS = {"panel", "output", "content_style"}
+
+_DEFAULT_CONTENT_STYLE = "stroke: none; fill: initial;"
 
 
 def _write_output(tree: "ET.ElementTree[ET.Element]", output_path: Path) -> None:
@@ -358,6 +360,7 @@ def _compile_tree(
     panel_config: dict, config_path: Path
 ) -> "ET.ElementTree[ET.Element] | None":
     """Parse the template SVG, embed all figures, and return the compiled tree."""
+    content_style = panel_config.get("content_style", _DEFAULT_CONTENT_STYLE)
     panel_str = panel_config.get("panel")
     if not panel_str:
         logger.error("Config missing required 'panel' key")
@@ -426,6 +429,7 @@ def _compile_tree(
             if not content:
                 logger.warning(f"Failed to render LaTeX for {figure_id}")
                 continue
+            _rewrite_ids(content, figure_id)
             # Scale LaTeX based on fontsize (12pt is base)
             scale = fontsize_num / 12.0
         elif svg_file:
@@ -496,19 +500,40 @@ def _compile_tree(
             group.clear()
             group.attrib.update(original_attribs)
 
+        ns = group.tag.split("}")[0] + "}" if "}" in group.tag else ""
         if scale != 1.0:
             # Wrap all content in a single <g scale(s)> so that clip-path definitions
             # (which live in <defs>) and their referencing elements are scaled together,
             # preserving the source coordinate system internally.
-            ns = group.tag.split("}")[0] + "}" if "}" in group.tag else ""
             wrapper = ET.Element(f"{ns}g")
             wrapper.set("transform", f"scale({scale})")
+            wrapper.set("class", "pc-content")
             for element in content:
                 wrapper.append(element)
             group.append(wrapper)
         else:
+            wrapper = ET.Element(f"{ns}g")
+            wrapper.set("class", "pc-content")
             for element in content:
-                group.append(element)
+                wrapper.append(element)
+            group.append(wrapper)
+
+    # Inject a CSS reset so template-level type selectors (e.g. `path { stroke: ... }`)
+    # do not bleed into embedded content such as LaTeX glyph outlines rendered as paths.
+    # Remove any reset left by a previous compilation first to avoid accumulation.
+    ns_svg = "{http://www.w3.org/2000/svg}"
+    defs = root.find(f"{ns_svg}defs") or root.find("defs")
+    if defs is None:
+        defs = ET.SubElement(root, f"{ns_svg}defs")
+    for old in defs.findall(f"{ns_svg}style") + defs.findall("style"):
+        if old.text and ".pc-content" in old.text:
+            defs.remove(old)
+    style_reset = ET.SubElement(defs, f"{ns_svg}style")
+    style_reset.set("type", "text/css")
+    style_reset.text = (
+        f".pc-content path, .pc-content circle, .pc-content polygon "
+        f"{{ {content_style} }}"
+    )
 
     return tree
 
