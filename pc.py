@@ -574,7 +574,9 @@ def _compile_tree(
     # do not bleed into embedded content such as LaTeX glyph outlines rendered as paths.
     # Remove any reset left by a previous compilation first to avoid accumulation.
     ns_svg = "{http://www.w3.org/2000/svg}"
-    defs = root.find(f"{ns_svg}defs") or root.find("defs")
+    defs = root.find(f"{ns_svg}defs")
+    if defs is None:
+        defs = root.find("defs")
     if defs is None:
         defs = ET.SubElement(root, f"{ns_svg}defs")
     for old in defs.findall(f"{ns_svg}style") + defs.findall("style"):
