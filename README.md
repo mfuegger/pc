@@ -108,6 +108,7 @@ The output path is taken from the `output` key in the config. If omitted, it def
 ```yaml
 panel: panel.svg    # required — path to the panel SVG, relative to this config file
 output: out.svg     # optional — defaults to <config-stem>.svg if omitted
+content_style: "stroke: #000000; stroke-width: 0.5; fill: initial;"  # optional
 ```
 
 `output` can also be a list to produce multiple formats in one run:
@@ -118,7 +119,9 @@ output:
   - out.pdf
 ```
 
-Each remaining key is a **label** that must match an element in the panel SVG. `pc` looks it up by `inkscape:label` first, then `label`, then `id`. The element can be a `<g>` group or a `<rect>` placeholder — a `<rect>` is automatically replaced by a `<g>` positioned at the rect's `x`/`y`.
+`content_style` is a CSS declaration block applied to all paths, circles, and polygons inside embedded SVG figures. It overrides type-selector rules in the panel template that would otherwise bleed into embedded content. The default is `stroke: none; fill: initial;`. LaTeX labels always get `stroke: none` regardless of this setting.
+
+Each remaining key is a **label** that must match an element in the panel SVG. `pc` looks it up by `inkscape:label` first, then `label`, then `id`. The element can be a `<g>` group or a `<rect>` placeholder — a `<rect>` is automatically replaced by a `<g>` positioned at the rect's `x`/`y`. A warning (including the panel filename) is emitted for any label not found; compilation of the remaining entries continues.
 
 ### Figure entry (SVG or PDF)
 
@@ -159,7 +162,7 @@ other: path/to/fig.svg
 
 ### Multiple panels
 
-Use a YAML list; each entry must have its own `output`:
+Use a YAML list; each entry must have its own `output`. A plain mapping (non-list) with duplicate keys — the easy mistake when copy-pasting a second panel block — triggers a warning and the second value silently wins; use the list form to avoid this.
 
 ```yaml
 - panel: panel1.svg
