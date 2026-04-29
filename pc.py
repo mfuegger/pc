@@ -319,6 +319,65 @@ def render_latex_to_svg(latex_text: str) -> list[ET.Element]:
         return []
 
 
+def _inline_latex_glyphs(elements: list[ET.Element]) -> None:
+    """Replace <use> glyph references with inlined paths.
+
+    Inkscape's LaTeX SVGs place glyph <path>s in <defs> and reference them via
+    <use>.  SVG renderers (macOS Preview in particular) re-apply document-level
+    CSS type selectors to the shadow copy rendered by <use>, bypassing any
+    inline style on the original defs path.  Inlining makes the paths real DOM
+    descendants of .pc-tex-content so the class-selector CSS rules reach them.
+    """
+    ns_xlink = "http://www.w3.org/1999/xlink"
+
+    id_map: dict[str, ET.Element] = {}
+    for root in elements:
+        for node in root.iter():
+            if node_id := node.get("id"):
+                id_map[node_id] = node
+
+    def _replace_uses(parent: ET.Element) -> None:
+        for i, child in enumerate(list(parent)):
+            _replace_uses(child)
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag != "use":
+                continue
+            href = child.get(f"{{{ns_xlink}}}href") or child.get("href", "")
+            if not href.startswith("#"):
+                continue
+            ref = id_map.get(href[1:])
+            if ref is None:
+                continue
+            x, y = child.get("x", "0"), child.get("y", "0")
+            ns_prefix = child.tag.rsplit("}", 1)[0] + "}" if "}" in child.tag else ""
+            g = ET.Element(f"{ns_prefix}g")
+            try:
+                if float(x) != 0.0 or float(y) != 0.0:
+                    g.set("transform", f"translate({x},{y})")
+            except ValueError:
+                g.set("transform", f"translate({x},{y})")
+            for sub in ref:
+                g.append(copy.deepcopy(sub))
+            parent.remove(child)
+            parent.insert(i, g)
+
+    for root in elements:
+        _replace_uses(root)
+
+    def _remove_defs(parent: ET.Element) -> None:
+        for c in [c for c in parent
+                  if (c.tag.split("}")[-1] if "}" in c.tag else c.tag) == "defs"]:
+            parent.remove(c)
+        for c in parent:
+            _remove_defs(c)
+
+    for el in [el for el in elements
+               if (el.tag.split("}")[-1] if "}" in el.tag else el.tag) == "defs"]:
+        elements.remove(el)
+    for root in elements:
+        _remove_defs(root)
+
+
 RESERVED_KEYS = {"panel", "output", "content_style"}
 
 _DEFAULT_CONTENT_STYLE = "stroke: none; fill: initial;"
@@ -395,7 +454,7 @@ def _compile_tree(
         if group is None:
             group = root.find(f".//*[@id='{figure_id}']")
         if group is None:
-            logger.warning(f"Group {figure_id} not found in panel")
+            logger.warning(f"Group {figure_id} not found in panel {panel_str}")
             continue
 
         # Parse figure config
@@ -430,6 +489,7 @@ def _compile_tree(
                 logger.warning(f"Failed to render LaTeX for {figure_id}")
                 continue
             _rewrite_ids(content, figure_id)
+            _inline_latex_glyphs(content)
             # Scale LaTeX based on fontsize (12pt is base)
             scale = fontsize_num / 12.0
         elif svg_file:
@@ -501,22 +561,14 @@ def _compile_tree(
             group.attrib.update(original_attribs)
 
         ns = group.tag.split("}")[0] + "}" if "}" in group.tag else ""
+        wrapper_class = "pc-tex-content" if tex_text else "pc-content"
+        wrapper = ET.Element(f"{ns}g")
         if scale != 1.0:
-            # Wrap all content in a single <g scale(s)> so that clip-path definitions
-            # (which live in <defs>) and their referencing elements are scaled together,
-            # preserving the source coordinate system internally.
-            wrapper = ET.Element(f"{ns}g")
             wrapper.set("transform", f"scale({scale})")
-            wrapper.set("class", "pc-content")
-            for element in content:
-                wrapper.append(element)
-            group.append(wrapper)
-        else:
-            wrapper = ET.Element(f"{ns}g")
-            wrapper.set("class", "pc-content")
-            for element in content:
-                wrapper.append(element)
-            group.append(wrapper)
+        wrapper.set("class", wrapper_class)
+        for element in content:
+            wrapper.append(element)
+        group.append(wrapper)
 
     # Inject a CSS reset so template-level type selectors (e.g. `path { stroke: ... }`)
     # do not bleed into embedded content such as LaTeX glyph outlines rendered as paths.
@@ -532,16 +584,43 @@ def _compile_tree(
     style_reset.set("type", "text/css")
     style_reset.text = (
         f".pc-content path, .pc-content circle, .pc-content polygon "
-        f"{{ {content_style} }}"
+        f"{{ {content_style} }}\n"
+        ".pc-tex-content path, .pc-tex-content circle, .pc-tex-content polygon "
+        "{ stroke: none !important; fill: initial; }"
     )
 
     return tree
 
 
+class _WarnDuplicatesLoader(yaml.SafeLoader):
+    pass
+
+
+def _construct_mapping_warn_duplicates(
+    loader: yaml.SafeLoader, node: yaml.MappingNode
+) -> dict:
+    pairs: list[tuple] = loader.construct_pairs(node)
+    seen: dict[str, int] = {}
+    for key, _ in pairs:
+        if key in seen:
+            logger.warning(
+                f"Duplicate YAML key '{key}' — later value overwrites earlier one; "
+                "use a list of panel blocks to define multiple panels"
+            )
+        seen[key] = 1
+    return dict(pairs)
+
+
+_WarnDuplicatesLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_mapping_warn_duplicates,
+)
+
+
 def compile_panel(config_path: Path, fallback_output: Path) -> None:
     """Compile one or more panels from a config file."""
     with open(config_path) as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=_WarnDuplicatesLoader)
 
     def _resolve_outputs(raw: str | list[str] | None, fallback: Path) -> list[Path]:
         if not raw:
