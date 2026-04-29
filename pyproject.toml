@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "panel-compiler"
-version = "0.1.4"
+version = "0.1.5"
 description = "Compose SVG figures and LaTeX equations into a panel template"
 readme = "README.md"
 authors = [{ name = "Matthias Függer", email = "mfuegger@gmail.com" }]
